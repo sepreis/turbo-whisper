@@ -1,11 +1,16 @@
 """Main application entry point for Turbo Whisper."""
 
-import fcntl
 import os
 import subprocess
 import sys
 import threading
 import time
+
+# Platform-specific imports for single-instance locking
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction
@@ -1325,19 +1330,36 @@ _lock_fd = None  # Global to keep lock file descriptor open
 def ensure_single_instance():
     """Ensure only one instance of the app is running."""
     global _lock_fd
-    lock_path = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "turbo-whisper.lock")
 
-    try:
-        # Open with O_CREAT to create if doesn't exist, O_WRONLY for writing
-        _lock_fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o644)
-        # Try to acquire exclusive lock (non-blocking)
-        fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        # Write PID
-        os.ftruncate(_lock_fd, 0)
-        os.write(_lock_fd, str(os.getpid()).encode())
-    except OSError:
-        print("Turbo Whisper is already running.")
-        sys.exit(0)
+    if sys.platform == "win32":
+        # Windows: use msvcrt.locking
+        lock_path = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "turbo-whisper.lock")
+        try:
+            # Open/create lock file
+            _lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+            # Try to acquire exclusive lock (non-blocking)
+            msvcrt.locking(_lock_fd, msvcrt.LK_NBLCK, 1)
+            # Write PID
+            os.lseek(_lock_fd, 0, os.SEEK_SET)
+            os.ftruncate(_lock_fd, 0)
+            os.write(_lock_fd, str(os.getpid()).encode())
+        except OSError:
+            print("Turbo Whisper is already running.")
+            sys.exit(0)
+    else:
+        # Unix: use fcntl.flock
+        lock_path = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "turbo-whisper.lock")
+        try:
+            # Open with O_CREAT to create if doesn't exist, O_WRONLY for writing
+            _lock_fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o644)
+            # Try to acquire exclusive lock (non-blocking)
+            fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Write PID
+            os.ftruncate(_lock_fd, 0)
+            os.write(_lock_fd, str(os.getpid()).encode())
+        except OSError:
+            print("Turbo Whisper is already running.")
+            sys.exit(0)
 
 
 def main():
