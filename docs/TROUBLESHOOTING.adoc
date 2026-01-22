@@ -84,6 +84,9 @@
 
 |**"Show Window" from tray doesn't bring window to front**
 |On some Linux window managers, the window may not come to the foreground. Click "Settings" instead (which activates the window), or use the hotkey. You can also click directly on the window in your taskbar.
+
+|**Terminal freezes when typing long text (Ghostty, etc.)**
+|Some terminals may freeze when receiving rapid keyboard input via evdev. Turbo Whisper types at 5ms per character, which can overwhelm some terminals with long text. Workaround: keep dictations shorter, or disable `auto_paste` and use Ctrl+V to paste from clipboard instead.
 |===
 
 == Diagnostic Commands

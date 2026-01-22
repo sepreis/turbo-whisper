@@ -42,7 +42,9 @@ Turbo Whisper is ideal for voice input with terminal-based AI tools:
 
 Simply press the hotkey, speak your prompt, and the transcription is typed directly into your terminal.
 
-### Claude Code Integration
+### Claude Code Integration (Experimental)
+
+> **Note:** This feature is experimental and has limitations. See [issue #23](https://github.com/knowall-ai/turbo-whisper/issues/23) for planned improvements.
 
 When dictating into Claude Code, you may want to wait until Claude finishes responding before typing your text. Turbo Whisper has built-in support for this.
 
