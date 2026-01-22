@@ -10,10 +10,11 @@ SYSTEM = platform.system()
 class Typer:
     """Types text into the currently focused window."""
 
-    def __init__(self):
+    def __init__(self, typing_delay_ms: int = 5):
         self.system = SYSTEM
         self._uinput = None
         self._evdev_available = False
+        self._typing_delay = typing_delay_ms / 1000.0  # Convert to seconds
 
         if self.system == "Linux":
             self._setup_linux()
@@ -236,7 +237,7 @@ class Typer:
                     self._uinput.syn()
 
                 # Small delay between characters to prevent dropped keystrokes
-                time.sleep(0.005)
+                time.sleep(self._typing_delay)
 
         return True
 

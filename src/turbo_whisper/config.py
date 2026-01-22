@@ -58,6 +58,7 @@ class Config:
     auto_paste: bool = True
     copy_to_clipboard: bool = True
     language: str = "en"
+    typing_delay_ms: int = 5  # Milliseconds between keystrokes (increase if terminal freezes)
 
     # Claude Code integration
     claude_integration: bool = True  # Enable integration server for Claude Code

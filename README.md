@@ -197,6 +197,7 @@ Create `~/.config/turbo-whisper/config.json` (Linux/macOS) or `%APPDATA%\turbo-w
   "language": "en",
   "auto_paste": true,
   "copy_to_clipboard": true,
+  "typing_delay_ms": 5,
   "waveform_color": "#00ff88",
   "background_color": "#1a1a2e"
 }
