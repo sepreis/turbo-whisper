@@ -75,6 +75,15 @@
 
 |**App not starting on login**
 |Copy desktop file to autostart: `cp /usr/share/applications/turbo-whisper.desktop ~/.config/autostart/`. Ensure the file contains `X-GNOME-Autostart-enabled=true`.
+
+|**Window steals focus when recording starts (Linux)**
+|Some Linux window managers don't fully respect Qt's `WindowDoesNotAcceptFocus` flag. The recording window may briefly take focus when appearing. The transcribed text should still be inserted into the correct window when recording stops, as focus is tracked internally.
+
+|**Windows: Default hotkey conflicts**
+|On Windows, the default hotkey is F8 (not Alt+Space). Alt+Space opens the window menu, Ctrl+Shift+Space conflicts with various apps, and Win+Shift+V conflicts with clipboard history. Change the hotkey in settings if F8 conflicts with other apps.
+
+|**"Show Window" from tray doesn't bring window to front**
+|On some Linux window managers, the window may not come to the foreground. Click "Settings" instead (which activates the window), or use the hotkey. You can also click directly on the window in your taskbar.
 |===
 
 == Diagnostic Commands
