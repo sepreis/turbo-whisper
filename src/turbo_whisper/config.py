@@ -8,6 +8,18 @@ from pathlib import Path
 from typing import TypedDict
 
 
+def _default_hotkey() -> list[str]:
+    """Return platform-appropriate default hotkey."""
+    import sys
+    if sys.platform == "win32":
+        # Alt+Space conflicts with Windows window menu
+        # Ctrl+Shift+Space conflicts with various apps
+        # Win+Shift+V conflicts with clipboard history
+        return ["f8"]
+    else:
+        return ["alt", "space"]
+
+
 class HistoryEntry(TypedDict, total=False):
     """A history entry with text, timestamp, and optional audio file."""
 
@@ -25,7 +37,9 @@ class Config:
     api_key: str = ""
 
     # Hotkey settings (using pynput key names)
-    hotkey: list[str] = field(default_factory=lambda: ["alt", "space"])
+    # Default: Ctrl+Shift+Space on Windows (Alt+Space conflicts with window menu)
+    #          Alt+Space on Linux/macOS
+    hotkey: list[str] = field(default_factory=lambda: _default_hotkey())
 
     # Audio settings
     sample_rate: int = 16000
@@ -57,7 +71,11 @@ class Config:
 
     def get_recordings_dir(self) -> Path:
         """Get the directory for storing audio recordings."""
-        config_dir = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        import sys
+        if sys.platform == "win32":
+            config_dir = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+        else:
+            config_dir = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
         recordings_dir = config_dir / "turbo-whisper" / "recordings"
         recordings_dir.mkdir(parents=True, exist_ok=True)
         return recordings_dir
@@ -114,7 +132,13 @@ class Config:
     @classmethod
     def get_config_path(cls) -> Path:
         """Get the configuration file path."""
-        config_dir = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        import sys
+        if sys.platform == "win32":
+            # Windows: use APPDATA
+            config_dir = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+        else:
+            # Linux/macOS: use XDG_CONFIG_HOME
+            config_dir = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
         return config_dir / "turbo-whisper" / "config.json"
 
     @classmethod

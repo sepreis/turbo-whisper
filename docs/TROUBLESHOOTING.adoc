@@ -58,6 +58,9 @@
 |**Windows: Auto-type not working**
 |Ensure PyAutoGUI is installed. Some apps with elevated privileges may block simulated keyboard input. Try running Turbo Whisper as administrator.
 
+|**Windows: Hotkey not working or conflicts with system**
+|Many hotkey combinations are reserved on Windows: Alt+Space (window menu), Ctrl+Shift+Space (input method), Ctrl+Alt+Space (various apps), Win+Shift+V (clipboard history). The default on Windows is F8. If this conflicts, try F9-F12 or Ctrl+Shift+M. Edit `hotkey` in `%APPDATA%\turbo-whisper\config.json`.
+
 |**PPA: "Repository does not have a Release file"**
 |The PPA may not have packages for your Ubuntu version. Check which series are supported at https://launchpad.net/~bengweeks/+archive/ubuntu/turbo-whisper. Request support for your version or install from source.
 

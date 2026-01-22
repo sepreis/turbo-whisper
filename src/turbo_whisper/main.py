@@ -117,12 +117,13 @@ class RecordingWindow(QWidget):
         self.setWindowIcon(get_tray_icon(128, recording=False))
 
         # Frameless, always on top, floating window that doesn't steal focus
-        self.setWindowFlags(
+        # Store base flags for toggling focus behavior
+        self._base_window_flags = (
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
-            | Qt.WindowType.WindowDoesNotAcceptFocus
         )
+        self.setWindowFlags(self._base_window_flags | Qt.WindowType.WindowDoesNotAcceptFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)  # Don't steal focus
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # Never accept keyboard focus
@@ -578,6 +579,10 @@ class RecordingWindow(QWidget):
             self.setFixedSize(self.config.window_width, self.config.window_height)
             # Stop Claude status updates
             self._claude_status_timer.stop()
+            # Restore no-focus behavior for recording
+            self.setWindowFlags(self._base_window_flags | Qt.WindowType.WindowDoesNotAcceptFocus)
+            self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.show()  # setWindowFlags hides the window, so re-show it
         else:
             self.settings_panel.show()
             self.settings_btn.setIcon(get_chevron_up_icon(20, "#84cc16"))
@@ -586,6 +591,11 @@ class RecordingWindow(QWidget):
             # Refresh Claude status and start auto-update timer
             self._update_claude_status()
             self._claude_status_timer.start()
+            # Allow focus so user can edit settings
+            self.setWindowFlags(self._base_window_flags)
+            self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            self.show()  # setWindowFlags hides the window, so re-show it
+            self.activateWindow()  # Bring to front and activate
 
     def _update_api_key_display(self) -> None:
         """Update the API key display based on visibility."""
@@ -1024,7 +1034,7 @@ class TurboWhisper:
         menu.addSeparator()
 
         settings_action = QAction("Settings...", menu)
-        settings_action.setEnabled(False)  # TODO: Implement settings UI
+        settings_action.triggered.connect(self._show_settings)
         menu.addAction(settings_action)
 
         menu.addSeparator()
@@ -1068,6 +1078,13 @@ class TurboWhisper:
         self.window.center_on_screen()
         self.window.show()
         self.window.raise_()
+
+    def _show_settings(self) -> None:
+        """Show the window with settings panel expanded."""
+        self._show_window()
+        # Expand settings if not already visible
+        if not self.window.settings_panel.isVisible():
+            self.window._toggle_settings()
 
     def _toggle_recording(self) -> None:
         """Toggle recording state."""
