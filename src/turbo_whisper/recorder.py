@@ -1,6 +1,7 @@
 """Audio recording functionality."""
 
 import io
+import re
 import subprocess
 import sys
 import threading
@@ -100,6 +101,72 @@ class AudioRecorder:
                 pass
         return devices
 
+    def _resolve_input_device(self) -> int | None:
+        """Resolve the configured mic to a PyAudio input-device index.
+
+        Matches config.input_device_name as a case-insensitive substring against
+        available input devices, preferring PipeWire-routed nodes over raw ALSA
+        'hw:' devices (which can't resample to the recording rate). Returns None
+        to use the system default when unset or unmatched.
+        """
+        name = (self.config.input_device_name or "").strip()
+        # The settings UI appends a display-only sample-rate suffix, e.g.
+        # "JBL Quantum Stream Mono (48000Hz)". It is not part of any real device
+        # name, so leaving it in makes every substring match fail.
+        name = re.sub(r"\s*\(\d+\s*Hz\)\s*$", "", name)
+        if not name:
+            return None
+        matches = []
+        for i in range(self.audio.get_device_count()):
+            try:
+                info = self.audio.get_device_info_by_index(i)
+            except Exception:
+                continue
+            if info.get("maxInputChannels", 0) < 1:
+                continue
+            dev_name = str(info.get("name", ""))
+            if name.lower() in dev_name.lower():
+                matches.append((i, dev_name))
+        if not matches:
+            print(f"Input device '{name}' not found; using system default")
+            return None
+        for i, dev_name in matches:
+            if "(hw:" not in dev_name:
+                return i
+        return matches[0][0]
+
+    def _open_stream(self, device_index: int | None) -> tuple:
+        """Open an input stream at the configured sample rate.
+
+        A specific device node may not support the configured rate. We do NOT
+        fall back to the device's native rate: some PipeWire nodes accept a
+        native-rate open() but then corrupt the heap when read (an uncatchable
+        crash), so opening them is never safe. Instead, fall back to the
+        system-default device, which resamples to the configured rate reliably.
+        Returns (stream, actual_rate).
+        """
+
+        def _open(idx):
+            return self.audio.open(
+                format=pyaudio.paInt16,
+                channels=self.config.channels,
+                rate=self.config.sample_rate,
+                input=True,
+                input_device_index=idx,
+                frames_per_buffer=self.config.chunk_size,
+            )
+
+        rate = self.config.sample_rate
+        if device_index is not None:
+            try:
+                return _open(device_index), rate
+            except OSError:
+                print(
+                    "Selected mic can't record at "
+                    f"{rate} Hz; using system default instead"
+                )
+        return _open(None), rate
+
     def start(self, level_callback=None) -> None:
         """Start recording audio."""
         if self.is_recording:
@@ -109,14 +176,9 @@ class AudioRecorder:
         self.frames = []
         self.is_recording = True
 
-        # Use simple defaults - let PyAudio/PipeWire handle device routing
-        self.stream = self.audio.open(
-            format=pyaudio.paInt16,
-            channels=self.config.channels,
-            rate=self.config.sample_rate,
-            input=True,
-            frames_per_buffer=self.config.chunk_size,
-        )
+        # Honor the configured mic (resolved by name); None = system default.
+        device_index = self._resolve_input_device()
+        self.stream, self._actual_sample_rate = self._open_stream(device_index)
 
         self._record_thread = threading.Thread(target=self._record_loop, daemon=True)
         self._record_thread.start()

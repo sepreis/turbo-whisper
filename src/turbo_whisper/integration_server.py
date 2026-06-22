@@ -10,11 +10,25 @@ class IntegrationHandler(BaseHTTPRequestHandler):
     """Handler for integration API requests."""
 
     ready_timestamp: float = 0
+    toggle_callback = None  # set by the app; invoked on POST /toggle
 
     def do_POST(self):
         """Handle POST requests."""
         if self.path == "/ready":
             IntegrationHandler.ready_timestamp = time.time()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status": "ok"}')
+        elif self.path == "/toggle":
+            # External record trigger (e.g. a Sway keybinding). Accessed via the
+            # class so the callback isn't bound as an instance method.
+            cb = IntegrationHandler.toggle_callback
+            if cb is None:
+                self.send_response(503)
+                self.end_headers()
+                return
+            cb()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()

@@ -35,6 +35,7 @@ class Config:
     # API settings
     api_url: str = "https://whisper.weeksfamily.me/v1/audio/transcriptions"
     api_key: str = ""
+    model: str = "openai/whisper-large-v3-turbo"  # OpenRouter STT model id
 
     # Hotkey settings (using pynput key names)
     # Default: F8 on Windows (Alt+Space conflicts with window menu)
@@ -69,6 +70,41 @@ class Config:
     history: list[HistoryEntry] = field(default_factory=list)
     history_max: int = 20
     store_recordings: bool = True  # Save audio files with transcriptions
+
+    def _load_env_file(self) -> None:
+        """Load KEY=VALUE pairs from <config_dir>/.env into os.environ.
+
+        Does not overwrite variables already present in the environment.
+        """
+        env_path = self.get_config_path().parent / ".env"
+        if not env_path.exists():
+            return
+        for raw in env_path.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            if line.startswith("export "):
+                line = line[len("export ") :]
+            key, _, value = line.partition("=")
+            key = key.strip()
+            if key and key not in os.environ:
+                os.environ[key] = value.strip().strip('"').strip("'")
+
+    def resolve_api_key(self) -> str:
+        """Return the API key, falling back to <config_dir>/.env or the environment.
+
+        Lets the key live in OPEN_ROUTER_API_KEY / OPENROUTER_API_KEY /
+        WHISPER_API_KEY instead of config.json. Resolved at request time so the
+        key is never written back to disk by save().
+        """
+        self._load_env_file()
+        return (
+            self.api_key
+            or os.environ.get("OPENROUTER_API_KEY")
+            or os.environ.get("OPEN_ROUTER_API_KEY")
+            or os.environ.get("WHISPER_API_KEY")
+            or ""
+        )
 
     def get_recordings_dir(self) -> Path:
         """Get the directory for storing audio recordings."""

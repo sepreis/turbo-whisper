@@ -183,11 +183,18 @@ class Typer:
             return self.copy_to_clipboard(text)
 
     def _type_linux(self, text: str) -> bool:
-        """Type text on Linux using evdev UInput."""
+        """Type text on Linux."""
         import time
 
         # Small delay to let focus settle after our window hides
         time.sleep(0.05)
+
+        # Prefer wtype on Wayland: it types real characters via the virtual
+        # keyboard protocol, so it is layout-independent. The evdev path below
+        # emits raw US-QWERTY keycodes, which the compositor re-maps through the
+        # active layout (e.g. German QWERTZ turns 'y' into 'z', "'" into 'ä').
+        if self._type_wtype(text):
+            return True
 
         if self._evdev_available and self._uinput:
             try:
@@ -210,6 +217,28 @@ class Typer:
             return True
 
         return False
+
+    def _type_wtype(self, text: str) -> bool:
+        """Type text using wtype (Wayland virtual keyboard, layout-independent).
+
+        Returns True on success, False if wtype is missing or fails (e.g. on
+        X11), so the caller can fall back to another backend.
+        """
+        if not shutil.which("wtype"):
+            return False
+        try:
+            # Read text from stdin via the "-" placeholder so arbitrary content
+            # (leading dashes, Unicode) is passed safely without shell quoting.
+            delay_ms = max(0, int(self._typing_delay * 1000))
+            proc = subprocess.run(
+                ["wtype", "-d", str(delay_ms), "-"],
+                input=text.encode(),
+                timeout=30,
+            )
+            return proc.returncode == 0
+        except Exception as e:
+            print(f"wtype typing failed: {e}")
+            return False
 
     def _type_evdev(self, text: str) -> bool:
         """Type text using evdev UInput (works on Wayland)."""

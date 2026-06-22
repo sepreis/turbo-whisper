@@ -44,3 +44,6 @@ config.json
 
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
+
+# Serena MCP local state (machine-specific)
+.serena/

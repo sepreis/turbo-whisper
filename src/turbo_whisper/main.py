@@ -1,6 +1,7 @@
 """Main application entry point for Turbo Whisper."""
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -743,7 +744,11 @@ class RecordingWindow(QWidget):
         self.config.api_key = self._actual_api_key  # Use the actual stored key
         # Save selected microphone
         self.config.input_device_index = self.mic_combo.currentData()
-        self.config.input_device_name = self.mic_combo.currentText()
+        # Drop the display-only sample-rate suffix (e.g. " (48000Hz)") so the
+        # stored name matches real device names at record time.
+        self.config.input_device_name = re.sub(
+            r"\s*\(\d+\s*Hz\)\s*$", "", self.mic_combo.currentText()
+        )
         self.config.save()
         # Brief confirmation
         self.save_btn.setText("✓ Saved!")
@@ -995,22 +1000,39 @@ class TurboWhisper:
         self._waveform_timer.timeout.connect(self._poll_waveform_data)
         self._waveform_timer.setInterval(30)  # Poll at ~33 FPS
 
-        # Hotkey - use appropriate backend for platform
-        self.hotkey_manager = create_hotkey_manager(
-            self.config.hotkey,
-            lambda: self.signals.toggle_recording.emit(),
-        )
+        # Hotkey - use appropriate backend for platform.
+        # pynput's X11 backend raises at *import* on pure-Wayland sessions
+        # (no .Xauthority), so treat any failure as "no global hotkey" rather
+        # than crashing the whole app.
+        try:
+            self.hotkey_manager = create_hotkey_manager(
+                self.config.hotkey,
+                lambda: self.signals.toggle_recording.emit(),
+            )
+        except Exception as e:
+            self.hotkey_manager = None
+            print(f"Warning: Global hotkey backend unavailable ({e})")
         if self.hotkey_manager is None:
-            print("Warning: Global hotkeys not available on this platform")
+            print(
+                "Warning: No global hotkey - trigger recording via "
+                "POST /toggle (e.g. a Sway keybinding)"
+            )
 
-        # Integration server for Claude Code
+        # Integration server for Claude Code and external record triggers.
+        # Started regardless of claude_integration: it also serves /toggle, which
+        # is the only way to trigger recording on Wayland (the in-app global
+        # hotkey needs X). The claude_integration flag only gates the
+        # ready-wait in _wait_for_claude_ready, not this server.
         self.integration_server = None
-        if self.config.claude_integration:
-            from .integration_server import IntegrationServer
+        from .integration_server import IntegrationHandler, IntegrationServer
 
-            self.integration_server = IntegrationServer(self.config.claude_integration_port)
-            if not self.integration_server.start():
-                self.integration_server = None
+        # Allow an external trigger (e.g. `curl -XPOST localhost:7878/toggle`
+        # from a Sway keybinding) to start/stop recording. The Qt signal hop
+        # marshals the call onto the UI thread.
+        IntegrationHandler.toggle_callback = lambda: self.signals.toggle_recording.emit()
+        self.integration_server = IntegrationServer(self.config.claude_integration_port)
+        if not self.integration_server.start():
+            self.integration_server = None
 
     def _setup_tray(self) -> None:
         """Set up system tray icon."""
