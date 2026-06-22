@@ -52,8 +52,8 @@ class Config:
     # UI settings
     waveform_color: str = "#84cc16"  # KnowAll.ai lime green
     background_color: str = "#1a1a2e"
-    window_width: int = 520
-    window_height: int = 260  # Taller window for bigger waveform
+    window_width: int = 260
+    window_height: int = 48  # Compact single-row recording pill
 
     # Behavior
     auto_paste: bool = True

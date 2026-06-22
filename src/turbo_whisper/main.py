@@ -37,8 +37,6 @@ from .config import Config
 from .hotkey import create_hotkey_manager
 from .icons import (
     get_check_icon,
-    get_chevron_down_icon,
-    get_chevron_up_icon,
     get_close_icon,
     get_copy_icon,
     get_eye_icon,
@@ -49,7 +47,7 @@ from .icons import (
 )
 from .recorder import AudioRecorder
 from .typer import Typer
-from .waveform import WaveformWidget
+from .recordingbar import RecordingBar
 
 
 class SignalBridge(QObject):
@@ -97,7 +95,11 @@ class TickMarksWidget(QWidget):
 
 
 class RecordingWindow(QWidget):
-    """Floating window showing waveform during recording."""
+    """Floating recording pill; expands to a settings view via the tray."""
+
+    # Settings view size (independent of the compact pill size)
+    SETTINGS_WIDTH = 420
+    SETTINGS_HEIGHT = 640
 
     # Signal emitted when ESC is pressed to cancel
     cancel_requested = pyqtSignal()
@@ -132,25 +134,19 @@ class RecordingWindow(QWidget):
         # Allow resize via mouse
         self._resize_edge = None
 
-        # Main container with rounded corners and purple gradient
+        # Main container - compact One Dark pill
         container = QWidget(self)
         container.setObjectName("container")
         container.setStyleSheet(
             """
             #container {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #2d1b4e,
-                    stop:0.5 #1a1033,
-                    stop:1 #0f0a1a
-                );
-                border-radius: 12px;
-                border: 1px solid #4a3070;
+                background: rgba(33, 37, 43, 0.96);
+                border-radius: 10px;
+                border: 1px solid #181a1f;
             }
         """
         )
 
-        # Use a stacked layout - waveform behind, controls on top
         from PyQt6.QtWidgets import QFrame
 
         # Container layout
@@ -158,105 +154,49 @@ class RecordingWindow(QWidget):
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.setSpacing(0)
 
-        # Create a frame for the main content
+        # Compact recording pill: a single content row holding the indicator.
+        # The settings panel below is hidden during recording and only shown
+        # when opened from the tray (see _toggle_settings).
         content_frame = QFrame()
         content_frame.setStyleSheet("background: transparent;")
         layout = QVBoxLayout(content_frame)
-        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setContentsMargins(10, 6, 10, 6)
         layout.setSpacing(4)
         container_layout.addWidget(content_frame)
 
-        # Waveform - use the bright KnowAll lime green (#84cc16)
-        self.waveform = WaveformWidget(
-            color="#84cc16",  # Same bright green as buttons
-            bg_color=self.config.background_color,
-        )
-        self.waveform.setMinimumHeight(160)  # Bigger orb
-        layout.addWidget(self.waveform, stretch=2)  # Give it more priority
-
-        # Status row - transparent background so orb shows through
-        status_widget = QWidget()
-        status_widget.setStyleSheet("background: transparent;")
-        status_layout = QHBoxLayout(status_widget)
-        status_layout.setContentsMargins(4, 0, 4, 0)
-
-        self.status_label = QLabel("Listening...")
-        self.status_label.setStyleSheet(
-            """
-            color: #888;
-            font-size: 11px;
-        """
-        )
-        status_layout.addWidget(self.status_label)
-
-        status_layout.addStretch()
-
-        # Hint label - show configured hotkey
         self._hotkey_str = "+".join(k.title() for k in self.config.hotkey)
-        self.hints_label = QLabel(f"Start: {self._hotkey_str}")
-        self.hints_label.setStyleSheet(
-            """
-            color: #666;
-            font-size: 10px;
-        """
-        )
-        status_layout.addWidget(self.hints_label)
 
-        # Animated status timer
-        self._status_dots = 0
-        self._status_timer = QTimer()
-        self._status_timer.timeout.connect(self._animate_status)
-        self._status_timer.setInterval(400)
-
-        layout.addWidget(status_widget)
-
-        # More toggle button - chevron icon
-        self.settings_btn = QPushButton()
-        self.settings_btn.setIcon(get_chevron_down_icon(20, "#84cc16"))
-        self.settings_btn.setFixedSize(40, 28)
-        self.settings_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # Prevent SPACE triggering
-        self.settings_btn.setStyleSheet(
-            """
-            QPushButton {
-                background: rgba(132, 204, 22, 0.1);
-                border: 1px solid rgba(132, 204, 22, 0.3);
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background: rgba(132, 204, 22, 0.2);
-            }
-        """
-        )
-        self.settings_btn.clicked.connect(self._toggle_settings)
-        layout.addWidget(self.settings_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        # Recording indicator - One Dark dot + equalizer bars + timer
+        self.bar = RecordingBar()
+        layout.addWidget(self.bar)
 
         # Collapsible settings panel
         self.settings_panel = QWidget()
         self.settings_panel.setStyleSheet(
             """
             QWidget {
-                background-color: rgba(0, 0, 0, 0.3);
+                background-color: rgba(24, 26, 31, 0.5);
                 border-radius: 8px;
             }
             QLabel {
-                color: #888;
+                color: #abb2bf;
                 font-size: 10px;
             }
             QLineEdit {
-                background-color: rgba(255, 255, 255, 0.1);
-                border: 1px solid #4a3070;
+                background-color: rgba(171, 178, 191, 0.08);
+                border: 1px solid #3b4048;
                 border-radius: 4px;
-                color: #fff;
+                color: #abb2bf;
                 padding: 6px;
                 font-size: 11px;
             }
             QSlider::groove:horizontal {
-                background: #333;
+                background: #3b4048;
                 height: 6px;
                 border-radius: 3px;
             }
             QSlider::handle:horizontal {
-                background: #84cc16;
+                background: #61afef;
                 width: 14px;
                 margin: -4px 0;
                 border-radius: 7px;
@@ -514,11 +454,12 @@ class RecordingWindow(QWidget):
         """
         )
         self.close_btn.clicked.connect(self._close_window)
-        # Hover behavior - change icon to green instead of background
-        self.close_btn.enterEvent = lambda e: self.close_btn.setIcon(get_close_icon(14, "#84cc16"))
+        # Hover behavior - change icon to accent instead of background
+        self.close_btn.enterEvent = lambda e: self.close_btn.setIcon(get_close_icon(14, "#61afef"))
         self.close_btn.leaveEvent = lambda e: self.close_btn.setIcon(get_close_icon(14, "#666666"))
         self.close_btn.move(self.config.window_width - 28, 8)  # Top-right corner
         self.close_btn.raise_()  # Bring to front
+        self.close_btn.hide()  # Hidden in the compact pill; shown in settings view
 
         # Version label - overlaid in top-left corner (not in layout)
         self.version_label = QLabel("v1.0.0", container)
@@ -529,8 +470,9 @@ class RecordingWindow(QWidget):
         """
         )
         self.version_label.move(12, 8)
+        self.version_label.hide()  # Hidden in the compact pill; shown in settings view
 
-        # Size
+        # Size - start as the compact recording pill
         self.setFixedSize(self.config.window_width, self.config.window_height)
 
     def update_icon(self, recording: bool) -> None:
@@ -545,19 +487,21 @@ class RecordingWindow(QWidget):
             super().keyPressEvent(event)
 
     def set_status(self, text: str, animate: bool = False) -> None:
-        """Update status label."""
-        self._base_status = text
-        self._status_dots = 0
-        self.status_label.setText(text)
-        if animate:
-            self._status_timer.start()
-        else:
-            self._status_timer.stop()
+        """Map a status string onto the compact bar's visual mode."""
+        lowered = text.lower()
+        if "process" in lowered or "transcrib" in lowered:
+            self.bar.set_mode("transcribing")
+        elif "listen" in lowered:
+            self.bar.set_mode("recording")
+        elif "copied" in lowered or "done" in lowered:
+            self.bar.set_mode("done")
+        else:  # Ready, errors, etc.
+            self.bar.set_mode("idle")
 
     def set_recording_hint(self, recording: bool) -> None:
-        """Update hint text based on recording state."""
+        """Update the window tooltip to reflect the start/stop hotkey."""
         action = "Stop" if recording else "Start"
-        self.hints_label.setText(f"{action}: {self._hotkey_str}")
+        self.setToolTip(f"{action}: {self._hotkey_str}")
 
     def update_mic_level(self, level: float) -> None:
         """Update the mic level display in sensitivity slider (0.0 to 1.0 scale)."""
@@ -566,18 +510,13 @@ class RecordingWindow(QWidget):
             self._current_mic_level = level
             self._update_sensitivity_style()
 
-    def _animate_status(self) -> None:
-        """Animate the status text with dots."""
-        self._status_dots = (self._status_dots + 1) % 4
-        dots = "." * self._status_dots
-        self.status_label.setText(f"{self._base_status}{dots}")
-
     def _toggle_settings(self) -> None:
-        """Toggle settings panel visibility."""
+        """Toggle between the compact recording pill and the settings view."""
         if self.settings_panel.isVisible():
             self.settings_panel.hide()
-            self.settings_btn.setIcon(get_chevron_down_icon(20, "#84cc16"))
-            # Shrink window
+            # Back to the compact pill - hide the overlay chrome
+            self.close_btn.hide()
+            self.version_label.hide()
             self.setFixedSize(self.config.window_width, self.config.window_height)
             # Stop Claude status updates
             self._claude_status_timer.stop()
@@ -587,9 +526,12 @@ class RecordingWindow(QWidget):
             self.show()  # setWindowFlags hides the window, so re-show it
         else:
             self.settings_panel.show()
-            self.settings_btn.setIcon(get_chevron_up_icon(20, "#84cc16"))
-            # Expand window - make it tall enough for all settings + taller history
-            self.setFixedSize(self.config.window_width, self.config.window_height + 520)
+            # Settings view has its own size, independent of the pill
+            self.setFixedSize(self.SETTINGS_WIDTH, self.SETTINGS_HEIGHT)
+            self.close_btn.move(self.SETTINGS_WIDTH - 28, 8)
+            self.close_btn.show()
+            self.close_btn.raise_()
+            self.version_label.show()
             # Refresh Claude status and start auto-update timer
             self._update_claude_status()
             self._claude_status_timer.start()
@@ -649,7 +591,7 @@ class RecordingWindow(QWidget):
             self.sensitivity_slider.blockSignals(False)
             value = snapped
 
-        self.waveform.sensitivity = value
+        self.bar.sensitivity = value
         self.gain_value_label.setText(f"{value}%")
         self._update_sensitivity_style()
 
@@ -1094,7 +1036,7 @@ class TurboWhisper:
 
     def _show_window(self) -> None:
         """Show the window without starting recording (doesn't steal focus)."""
-        self.window.waveform.set_recording(False)
+        self.window.bar.set_recording(False)
         self.window.set_recording_hint(recording=False)
         self._update_icons(recording=False)
         self.window.set_status("Ready", animate=False)
@@ -1129,7 +1071,7 @@ class TurboWhisper:
         self._update_icons(recording=True)
 
         # Show window (don't steal focus from current app)
-        self.window.waveform.set_recording(True)
+        self.window.bar.set_recording(True)
         self.window.set_recording_hint(recording=True)
         self.window.set_status("Listening", animate=True)
 
@@ -1164,7 +1106,7 @@ class TurboWhisper:
         self.recorder.stop()
 
         # Hide window
-        self.window.waveform.set_recording(False)
+        self.window.bar.set_recording(False)
         self.window.hide()
 
         self.tray.showMessage(
@@ -1187,7 +1129,7 @@ class TurboWhisper:
         self._waveform_timer.stop()
 
         # Update UI
-        self.window.waveform.set_recording(False)
+        self.window.bar.set_recording(False)
         self.window.set_recording_hint(recording=False)
         self.window.set_status("Processing", animate=True)
 
@@ -1230,7 +1172,7 @@ class TurboWhisper:
         """Poll waveform data from recorder thread (called from main thread timer)."""
         if self._pending_waveform_data is not None:
             level, waveform_buffer = self._pending_waveform_data
-            self.window.waveform.update_waveform(level, waveform_buffer)
+            self.window.bar.update_waveform(level, waveform_buffer)
             # Update mic level meter (scale 0-1 to 0-100, cap at 100)
             self.window.update_mic_level(level)
 

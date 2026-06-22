@@ -40,7 +40,7 @@ class WaveformWidget(QWidget):
         self._sensitivity_value = 200
         self._update_threshold()
 
-        self.setMinimumHeight(130)
+        self.setMinimumHeight(85)
 
     @property
     def sensitivity(self) -> int:
