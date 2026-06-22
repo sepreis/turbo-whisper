@@ -1,4 +1,5 @@
-"""Whisper API client - targets OpenRouter's /audio/transcriptions (JSON + base64)."""
+"""Whisper API client - supports OpenRouter (JSON + base64) and OpenAI-style
+multipart endpoints (Ollama, LocalAI, faster-whisper-server)."""
 
 import base64
 
@@ -19,6 +20,37 @@ class WhisperClient:
     def __init__(self, config: Config):
         self.config = config
 
+    def _request_kwargs(self, audio_data: bytes) -> dict:
+        """Build httpx post kwargs for the configured request format.
+
+        - "multipart": OpenAI-style file upload (Ollama, LocalAI, OpenAI,
+          faster-whisper-server).
+        - "openrouter" (default): JSON body with base64-encoded audio.
+        """
+        headers = {}
+        api_key = self.config.resolve_api_key()
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        if self.config.api_format == "multipart":
+            files = {"file": ("audio.wav", audio_data, "audio/wav")}
+            data = {"model": self.config.model, "response_format": "json"}
+            if self.config.language:
+                data["language"] = self.config.language
+            return {"headers": headers, "files": files, "data": data}
+
+        # OpenRouter: JSON body with base64-encoded audio.
+        headers["Content-Type"] = "application/json"
+        payload = {
+            "model": self.config.model,
+            "input_audio": {
+                "data": base64.b64encode(audio_data).decode("ascii"),
+                "format": "wav",
+            },
+            "language": self.config.language,
+        }
+        return {"headers": headers, "json": payload}
+
     async def transcribe(self, audio_data: bytes) -> str:
         """
         Send audio to Whisper API and return transcription.
@@ -29,29 +61,11 @@ class WhisperClient:
         Returns:
             Transcribed text
         """
-        headers = {}
-        api_key = self.config.resolve_api_key()
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-
-        # OpenRouter STT expects a JSON body with base64-encoded audio,
-        # not OpenAI's multipart file upload. Model id comes from config.
-        headers["Content-Type"] = "application/json"
-        payload = {
-            "model": self.config.model,
-            "input_audio": {
-                "data": base64.b64encode(audio_data).decode("ascii"),
-                "format": "wav",
-            },
-            "language": self.config.language,
-        }
-
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     self.config.api_url,
-                    headers=headers,
-                    json=payload,
+                    **self._request_kwargs(audio_data),
                 )
 
                 if response.status_code != 200:
@@ -69,29 +83,11 @@ class WhisperClient:
 
     def transcribe_sync(self, audio_data: bytes) -> str:
         """Synchronous version of transcribe."""
-        headers = {}
-        api_key = self.config.resolve_api_key()
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-
-        # OpenRouter STT expects a JSON body with base64-encoded audio,
-        # not OpenAI's multipart file upload. Model id comes from config.
-        headers["Content-Type"] = "application/json"
-        payload = {
-            "model": self.config.model,
-            "input_audio": {
-                "data": base64.b64encode(audio_data).decode("ascii"),
-                "format": "wav",
-            },
-            "language": self.config.language,
-        }
-
         try:
             with httpx.Client(timeout=30.0) as client:
                 response = client.post(
                     self.config.api_url,
-                    headers=headers,
-                    json=payload,
+                    **self._request_kwargs(audio_data),
                 )
 
                 if response.status_code == 401:

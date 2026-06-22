@@ -36,6 +36,9 @@ class Config:
     api_url: str = "https://whisper.weeksfamily.me/v1/audio/transcriptions"
     api_key: str = ""
     model: str = "openai/whisper-large-v3-turbo"  # OpenRouter STT model id
+    # Request format: "openrouter" (JSON + base64) or "multipart" (OpenAI-style
+    # file upload, used by Ollama / LocalAI / faster-whisper-server).
+    api_format: str = "openrouter"
 
     # Hotkey settings (using pynput key names)
     # Default: F8 on Windows (Alt+Space conflicts with window menu)
